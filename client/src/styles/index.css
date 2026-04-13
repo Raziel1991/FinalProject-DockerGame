@@ -1,0 +1,201 @@
+:root {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: #e8f1f8;
+  background:
+    radial-gradient(circle at top, rgba(19, 120, 184, 0.22), transparent 40%),
+    linear-gradient(180deg, #061421 0%, #0c2030 100%);
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-shell {
+  width: min(1100px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 2rem 0 4rem;
+}
+
+.site-header {
+  display: grid;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: #7fd2ff;
+  font-size: 0.8rem;
+}
+
+.site-header h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 3.4rem);
+}
+
+.page-description {
+  max-width: 70ch;
+  color: #b7cbda;
+}
+
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.site-nav a,
+.button {
+  border: 1px solid rgba(127, 210, 255, 0.25);
+  background: rgba(12, 31, 46, 0.7);
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.site-nav a:hover,
+.button:hover {
+  border-color: #7fd2ff;
+  transform: translateY(-1px);
+}
+
+.page-content {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.card-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.panel {
+  background: rgba(10, 26, 39, 0.84);
+  border: 1px solid rgba(127, 210, 255, 0.16);
+  border-radius: 18px;
+  padding: 1.25rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+}
+
+.form-panel {
+  display: grid;
+  gap: 1rem;
+  max-width: 540px;
+}
+
+.form-panel label {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.form-panel input {
+  border: 1px solid rgba(127, 210, 255, 0.2);
+  border-radius: 12px;
+  background: rgba(4, 14, 22, 0.85);
+  color: #eff7fd;
+  padding: 0.8rem 0.9rem;
+}
+
+.button {
+  color: #eff7fd;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.button-secondary {
+  background: transparent;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.callout {
+  display: grid;
+  gap: 1rem;
+  padding: 1.5rem;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(25, 104, 147, 0.32), rgba(5, 19, 29, 0.82));
+  border: 1px solid rgba(127, 210, 255, 0.2);
+}
+
+.stat-card p,
+.todo-note {
+  color: #b7cbda;
+}
+
+.stat-card strong {
+  font-size: 2rem;
+}
+
+.game-placeholder {
+  display: grid;
+  place-items: center;
+  min-height: 260px;
+  border-radius: 18px;
+  border: 1px dashed rgba(127, 210, 255, 0.35);
+  background:
+    linear-gradient(135deg, rgba(29, 84, 116, 0.18), rgba(9, 18, 29, 0.4)),
+    repeating-linear-gradient(
+      45deg,
+      rgba(127, 210, 255, 0.04),
+      rgba(127, 210, 255, 0.04) 16px,
+      transparent 16px,
+      transparent 32px
+    );
+}
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.leaderboard-table th,
+.leaderboard-table td {
+  text-align: left;
+  padding: 0.8rem 0.5rem;
+  border-bottom: 1px solid rgba(127, 210, 255, 0.12);
+}
+
+ul {
+  padding-left: 1.2rem;
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    width: min(100% - 1rem, 1100px);
+    padding-top: 1.25rem;
+  }
+
+  .site-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
