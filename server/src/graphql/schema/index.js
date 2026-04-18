@@ -17,6 +17,9 @@ export const typeDefs = `#graphql
     reputation: Int!
     credits: Int!
     currentStage: String!
+    containerHealth: Int!
+    missionProgress: Int!
+    missionStatus: String!
     unlockedCosmetics: [String!]!
     achievements: [Achievement!]!
   }
@@ -38,6 +41,8 @@ export const typeDefs = `#graphql
     user: User!
     score: Int!
     rank: Int!
+    level: Int
+    xp: Int
     season: String!
     mode: String!
     achievedAt: String!
@@ -99,24 +104,58 @@ export const typeDefs = `#graphql
     reputation: Int
     credits: Int
     currentStage: String
+    containerHealth: Int
+    missionProgress: Int
+    missionStatus: String
     unlockedCosmetics: [String!]
+  }
+
+  input SaveGameProgressInput {
+    score: Int!
+    xp: Int!
+    level: Int!
+    containerHealth: Int!
+    missionProgress: Int!
+    missionStatus: String!
+    result: String
+    scoreEarned: Int
+    xpEarned: Int
+    notes: String
+  }
+
+  type SaveGameProgressPayload {
+    profile: GameProfile!
+    achievements: [Achievement!]!
+    recentMatchResult: MatchResult
+    leaderboardEntry: LeaderboardEntry
   }
 
   type Query {
     health: String!
     me: User
+    currentUser: User
+    profile: UserProfileData
     gameProfile: GameProfile
     achievements: [Achievement!]!
+    getAchievements: [Achievement!]!
     leaderboard: [LeaderboardEntry!]!
+    getLeaderboard: [LeaderboardEntry!]!
     challenges: [Challenge!]!
     recentMatches: [MatchResult!]!
     dashboard: DashboardData!
+  }
+
+  type UserProfileData {
+    user: User
+    profile: GameProfile
+    achievements: [Achievement!]!
   }
 
   type Mutation {
     register(input: RegisterInput!): AuthPayload!
     login(input: LoginInput!): AuthPayload!
     updateMyGameProfile(input: UpdateGameProfileInput!): GameProfile!
+    saveGameProgress(input: SaveGameProgressInput!): SaveGameProgressPayload!
   }
 
   # TODO: Add gameplay mutations and subscriptions in Phase 2 and Phase 3.

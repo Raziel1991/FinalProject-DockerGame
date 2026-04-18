@@ -10,7 +10,6 @@ import { signToken } from "../../utils/jwt.js";
 import {
   placeholderAchievements,
   placeholderChallenges,
-  placeholderLeaderboard,
   placeholderMatches
 } from "../../utils/placeholderData.js";
 
@@ -20,6 +19,72 @@ function requireAuth(currentUser) {
       extensions: { code: "UNAUTHENTICATED" }
     });
   }
+}
+
+async function syncAchievementsForProfile(profile) {
+  const userId = profile.user._id || profile.user;
+  const rules = [
+    {
+      key: "first-build",
+      title: "First Build",
+      description: "Save your first gameplay progress update.",
+      xpReward: 50,
+      badgeIcon: "rocket",
+      completed: true
+    },
+    {
+      key: "service-keeper",
+      title: "Service Keeper",
+      description: "Keep container health at 90 or higher.",
+      xpReward: 75,
+      badgeIcon: "shield",
+      completed: profile.containerHealth >= 90
+    },
+    {
+      key: "mission-ready",
+      title: "Mission Ready",
+      description: "Reach 100 percent mission progress.",
+      xpReward: 100,
+      badgeIcon: "star",
+      completed: profile.missionProgress >= 100
+    }
+  ];
+
+  const achievementIds = [];
+
+  for (const rule of rules) {
+    const achievement = await Achievement.findOneAndUpdate(
+      { user: userId, key: rule.key },
+      {
+        $set: {
+          title: rule.title,
+          description: rule.description,
+          xpReward: rule.xpReward,
+          badgeIcon: rule.badgeIcon,
+          completed: rule.completed,
+          unlockedAt: rule.completed ? new Date() : null
+        },
+        $setOnInsert: {
+          user: userId
+        }
+      },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true
+      }
+    );
+
+    achievementIds.push(achievement._id);
+  }
+
+  await GameProfile.findByIdAndUpdate(profile._id, {
+    $set: {
+      achievements: achievementIds
+    }
+  });
+
+  return Achievement.find({ user: userId }).populate("user").sort({ createdAt: -1 });
 }
 
 async function findOrCreateProfile(userId) {
@@ -37,6 +102,27 @@ export const resolvers = {
   Query: {
     health: () => "OK",
     me: async (_, __, { currentUser }) => currentUser,
+    currentUser: async (_, __, { currentUser }) => currentUser,
+    profile: async (_, __, { currentUser }) => {
+      if (!currentUser) {
+        return {
+          user: null,
+          profile: null,
+          achievements: placeholderAchievements
+        };
+      }
+
+      const [profile, achievements] = await Promise.all([
+        findOrCreateProfile(currentUser.id),
+        Achievement.find({ user: currentUser.id }).populate("user").sort({ createdAt: -1 })
+      ]);
+
+      return {
+        user: currentUser,
+        profile,
+        achievements: achievements.length > 0 ? achievements : placeholderAchievements
+      };
+    },
     gameProfile: async (_, __, { currentUser }) => {
       if (!currentUser) {
         return null;
@@ -55,14 +141,16 @@ export const resolvers = {
 
       return achievements.length > 0 ? achievements : placeholderAchievements;
     },
+    getAchievements: async (_, __, context) => resolvers.Query.achievements(_, __, context),
     leaderboard: async () => {
       const entries = await LeaderboardEntry.find()
         .populate("user")
         .sort({ score: -1, achievedAt: 1 })
         .limit(10);
 
-      return entries.length > 0 ? entries : placeholderLeaderboard;
+      return entries;
     },
+    getLeaderboard: async () => resolvers.Query.leaderboard(),
     challenges: async (_, __, { currentUser }) => {
       const query = currentUser
         ? { $or: [{ assignedTo: currentUser.id }, { assignedTo: null }] }
@@ -187,6 +275,83 @@ export const resolvers = {
       ).populate("user");
 
       return profile;
+    },
+    saveGameProgress: async (_, { input }, { currentUser }) => {
+      requireAuth(currentUser);
+
+      const profile = await GameProfile.findOneAndUpdate(
+        { user: currentUser.id },
+        {
+          $set: {
+            totalScore: input.score,
+            xp: input.xp,
+            level: input.level,
+            containerHealth: input.containerHealth,
+            missionProgress: input.missionProgress,
+            missionStatus: input.missionStatus,
+            reputation: input.missionProgress,
+            currentStage: input.missionProgress >= 100 ? "Completed" : "Dock-01"
+          }
+        },
+        {
+          new: true,
+          upsert: true,
+          setDefaultsOnInsert: true
+        }
+      ).populate("user");
+
+      const achievements = await syncAchievementsForProfile(profile);
+
+      const recentMatchResult = await MatchResult.create({
+        user: currentUser.id,
+        opponentName: "Mock Docker System",
+        opponentType: "system",
+        result: input.result || "progress",
+        scoreEarned: input.scoreEarned || 0,
+        xpEarned: input.xpEarned || 0,
+        notes: input.notes || "Phase 3 placeholder progress save."
+      });
+
+      const leaderboardEntry = await LeaderboardEntry.findOneAndUpdate(
+        { user: currentUser.id, season: "Season 1", mode: "solo" },
+        {
+          $set: {
+            score: input.score,
+            season: "Season 1",
+            mode: "solo",
+            achievedAt: new Date()
+          }
+        },
+        {
+          new: true,
+          upsert: true,
+          setDefaultsOnInsert: true
+        }
+      ).populate("user");
+
+      const rankedEntries = await LeaderboardEntry.find({ season: "Season 1", mode: "solo" })
+        .sort({ score: -1, achievedAt: 1 });
+
+      for (let index = 0; index < rankedEntries.length; index += 1) {
+        const entry = rankedEntries[index];
+        if (entry.rank !== index + 1) {
+          entry.rank = index + 1;
+          await entry.save();
+        }
+      }
+
+      const refreshedProfile = await GameProfile.findById(profile._id).populate("user");
+      const refreshedLeaderboardEntry = await LeaderboardEntry.findById(leaderboardEntry._id).populate(
+        "user"
+      );
+      const refreshedRecentMatch = await MatchResult.findById(recentMatchResult._id).populate("user");
+
+      return {
+        profile: refreshedProfile,
+        achievements,
+        recentMatchResult: refreshedRecentMatch,
+        leaderboardEntry: refreshedLeaderboardEntry
+      };
     }
   },
   User: {
@@ -243,6 +408,16 @@ export const resolvers = {
       }
 
       return User.findById(parent.user);
+    },
+    level: async (parent) => {
+      const userId = parent.user?._id || parent.user;
+      const profile = await GameProfile.findOne({ user: userId });
+      return profile ? profile.level : null;
+    },
+    xp: async (parent) => {
+      const userId = parent.user?._id || parent.user;
+      const profile = await GameProfile.findOne({ user: userId });
+      return profile ? profile.xp : null;
     },
     achievedAt: (parent) => new Date(parent.achievedAt).toISOString()
   },

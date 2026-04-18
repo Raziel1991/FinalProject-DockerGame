@@ -32,6 +32,18 @@ const gameProfileSchema = new mongoose.Schema(
       type: String,
       default: "Dock-01"
     },
+    containerHealth: {
+      type: Number,
+      default: 100
+    },
+    missionProgress: {
+      type: Number,
+      default: 0
+    },
+    missionStatus: {
+      type: String,
+      default: "Standby"
+    },
     unlockedCosmetics: {
       type: [String],
       default: []

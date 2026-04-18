@@ -1,6 +1,15 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 function PageLayout({ title, description, children }) {
+  const { isAuthenticated, logout } = useAuth();
+  const navigate = useNavigate();
+
+  function handleLogout() {
+    logout();
+    navigate("/login");
+  }
+
   return (
     <div className="app-shell">
       <header className="site-header">
@@ -12,12 +21,17 @@ function PageLayout({ title, description, children }) {
 
         <nav className="site-nav">
           <Link to="/">Home</Link>
-          <Link to="/login">Login</Link>
-          <Link to="/register">Register</Link>
+          {!isAuthenticated ? <Link to="/login">Login</Link> : null}
+          {!isAuthenticated ? <Link to="/register">Register</Link> : null}
           <Link to="/dashboard">Dashboard</Link>
           <Link to="/game">Game</Link>
           <Link to="/leaderboard">Leaderboard</Link>
           <Link to="/profile">Profile</Link>
+          {isAuthenticated ? (
+            <button type="button" className="button" onClick={handleLogout}>
+              Logout
+            </button>
+          ) : null}
         </nav>
       </header>
 

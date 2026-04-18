@@ -1,144 +1,370 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import PageLayout from "../components/PageLayout";
 import GameScenePlaceholder from "../components/GameScenePlaceholder";
-import {
-  applyMockAction,
-  createInitialGameState,
-  getMockMissionSteps
-} from "../services/mockGameService";
+import { getAchievements, getCurrentUser, saveGameProgress } from "../graphql/gameApi";
+
+function buildAchievementList(score, health, commandCounts) {
+  return [
+    {
+      key: "first-commit",
+      title: "First Commit",
+      description: "Use docker commit one time.",
+      unlocked: commandCounts.commit >= 1
+    },
+    {
+      key: "crash-manager",
+      title: "Crash Manager",
+      description: "Restart a crashed container.",
+      unlocked: commandCounts.restart >= 1
+    },
+    {
+      key: "fleet-captain",
+      title: "Fleet Captain",
+      description: "Reach 300 throughput in one run.",
+      unlocked: score >= 300
+    },
+    {
+      key: "steady-ops",
+      title: "Steady Ops",
+      description: "Keep fleet health above 80.",
+      unlocked: health >= 80
+    }
+  ];
+}
+
+function getHealthLabel(health) {
+  if (health > 60) {
+    return "Stable";
+  }
+
+  if (health > 30) {
+    return "Warning";
+  }
+
+  return "Critical";
+}
+
+function buildSavePayload(score, health, xp, level) {
+  return {
+    score,
+    xp,
+    level,
+    containerHealth: health,
+    missionProgress: Math.min(100, Math.round(score / 5)),
+    missionStatus: health > 0 ? "Fleet Active" : "Fleet Sunk",
+    recentMatchResult: {
+      result: health > 0 ? "Mission active" : "Mission failed",
+      scoreEarned: score,
+      xpEarned: xp,
+      summary:
+        health > 0
+          ? "Fleet progress saved during active play."
+          : "Fleet lost after too many container crashes."
+    }
+  };
+}
 
 function GamePage() {
-  const [gameState, setGameState] = useState(() => createInitialGameState());
+  const [gameId, setGameId] = useState(0);
+  const [playerName, setPlayerName] = useState("dockerCadet");
+  const [score, setScore] = useState(0);
+  const [health, setHealth] = useState(100);
+  const [xp, setXp] = useState(0);
+  const [level, setLevel] = useState(1);
+  const [gameState, setGameState] = useState("playing");
+  const [menu, setMenu] = useState(null);
+  const [commandRequest, setCommandRequest] = useState(null);
+  const [saveState, setSaveState] = useState("Local session running");
+  const [fleetCounts, setFleetCounts] = useState({
+    runningCount: 0,
+    crashedCount: 0,
+    stoppedCount: 0,
+    commandCounts: {
+      start: 0,
+      stop: 0,
+      restart: 0,
+      commit: 0
+    }
+  });
+  const [achievementOverrides, setAchievementOverrides] = useState(null);
 
-  const primaryStats = useMemo(
-    () => [
-      { label: "Score", value: String(gameState.score) },
-      { label: "XP", value: String(gameState.xp) },
-      { label: "Level", value: String(gameState.level) },
-      { label: "Container Health", value: `${gameState.containerHealth}%` }
-    ],
-    [gameState]
+  useEffect(() => {
+    async function loadUserData() {
+      const [currentUser, backendAchievements] = await Promise.all([
+        getCurrentUser(),
+        getAchievements()
+      ]);
+
+      if (currentUser?.username) {
+        setPlayerName(currentUser.username);
+        setSaveState("Backend connected");
+      }
+
+      if (backendAchievements?.length) {
+        setAchievementOverrides(backendAchievements);
+      }
+    }
+
+    loadUserData();
+  }, []);
+
+  const localAchievements = useMemo(
+    () => buildAchievementList(score, health, fleetCounts.commandCounts),
+    [fleetCounts.commandCounts, health, score]
   );
 
-  const missionSteps = getMockMissionSteps();
-  const secondaryStats = [
-    { label: "Mission State", value: gameState.missionStatus },
-    { label: "Progress", value: `${gameState.missionProgress}%` }
-  ];
+  const achievements = achievementOverrides?.length
+    ? achievementOverrides.map((achievement) => ({
+        ...achievement,
+        unlocked:
+          achievement.unlocked ??
+          achievement.completed ??
+          localAchievements.find((item) => item.key === achievement.key)?.unlocked ??
+          false
+      }))
+    : localAchievements;
 
-  function handleAction(actionKey) {
-    setGameState((currentState) => applyMockAction(currentState, actionKey));
+  const stats = useMemo(
+    () => [
+      { label: "Throughput", value: Math.floor(score) },
+      { label: "Health", value: `${Math.ceil(health)}%` },
+      { label: "XP", value: xp },
+      { label: "Level", value: level }
+    ],
+    [health, level, score, xp]
+  );
+
+  const restartGame = useCallback(() => {
+    setScore(0);
+    setHealth(100);
+    setXp(0);
+    setLevel(1);
+    setGameState("playing");
+    setMenu(null);
+    setCommandRequest(null);
+    setSaveState("New fleet deployed");
+    setFleetCounts({
+      runningCount: 0,
+      crashedCount: 0,
+      stoppedCount: 0,
+      commandCounts: {
+        start: 0,
+        stop: 0,
+        restart: 0,
+        commit: 0
+      }
+    });
+    setGameId((currentId) => currentId + 1);
+  }, []);
+
+  function handleStatsChange(nextStats) {
+    const roundedScore = Math.floor(nextStats.score);
+    const roundedHealth = Math.max(0, Math.ceil(nextStats.health));
+    const nextXp = roundedScore + nextStats.commandCounts.commit * 20 + nextStats.commandCounts.restart * 10;
+    const nextLevel = Math.max(1, Math.floor(nextXp / 180) + 1);
+
+    setScore(roundedScore);
+    setHealth(roundedHealth);
+    setXp(nextXp);
+    setLevel(nextLevel);
+    setFleetCounts(nextStats);
+  }
+
+  async function handleGameOver(finalStats) {
+    setGameState("gameover");
+    setMenu(null);
+
+    const finalScore = Math.floor(finalStats.score);
+    const finalHealth = 0;
+    const finalXp = finalScore + finalStats.commandCounts.commit * 20 + finalStats.commandCounts.restart * 10;
+    const finalLevel = Math.max(1, Math.floor(finalXp / 180) + 1);
+
+    setScore(finalScore);
+    setHealth(finalHealth);
+    setXp(finalXp);
+    setLevel(finalLevel);
+    setFleetCounts(finalStats);
+
+    const savePayload = buildSavePayload(finalScore, finalHealth, finalXp, finalLevel);
+    const saved = await saveGameProgress(savePayload);
+    setSaveState(saved ? "Game over saved to backend" : "Game over saved locally only");
+  }
+
+  function handleCommand(command) {
+    if (!menu) {
+      return;
+    }
+
+    setCommandRequest({
+      id: Date.now(),
+      command,
+      containerId: menu.cubeId
+    });
+    setMenu(null);
   }
 
   return (
     <PageLayout
       title="Game"
-      description="Phase 3 mock gameplay shell with simple actions, mission progress, and achievement tracking."
+      description="Click containers on the Docker whale, open the command terminal, and keep the fleet alive."
     >
-      <section className="card-grid">
-        {primaryStats.map((stat) => (
-          <article className="panel stat-card hud-card" key={stat.label}>
-            <p>{stat.label}</p>
-            <strong>{stat.value}</strong>
-          </article>
-        ))}
+      <section className="panel fleet-panel">
+        <div className="fleet-game-shell">
+          <GameScenePlaceholder
+            gameId={gameId}
+            menuOpen={Boolean(menu)}
+            commandRequest={commandRequest}
+            onSelectContainer={setMenu}
+            onStatsChange={handleStatsChange}
+            onGameOver={handleGameOver}
+          />
 
-        {secondaryStats.map((stat) => (
-          <article className="panel stat-card hud-card" key={stat.label}>
-            <p>{stat.label}</p>
-            <strong>{stat.value}</strong>
-          </article>
-        ))}
+          {menu ? (
+            <div
+              className="fleet-terminal-menu no-raycast"
+              style={{
+                left: `${Math.min(menu.x + 16, window.innerWidth - 280)}px`,
+                top: `${Math.min(menu.y + 16, window.innerHeight - 220)}px`
+              }}
+            >
+              <div className="fleet-terminal-header">
+                <div>
+                  <strong>Docker Terminal</strong>
+                  <span>{menu.cubeId}</span>
+                </div>
+                <button type="button" className="button button-secondary" onClick={() => setMenu(null)}>
+                  Close
+                </button>
+              </div>
+
+              <p className="fleet-terminal-status">
+                Status: <strong>{menu.cubeState}</strong>
+              </p>
+
+              <div className="fleet-terminal-actions">
+                {menu.cubeState === "crashed" ? (
+                  <button type="button" className="button" onClick={() => handleCommand("restart")}>
+                    docker restart
+                  </button>
+                ) : (
+                  <>
+                    {menu.cubeState === "running" ? (
+                      <button type="button" className="button" onClick={() => handleCommand("stop")}>
+                        docker stop
+                      </button>
+                    ) : null}
+
+                    {menu.cubeState === "stopped" ? (
+                      <button type="button" className="button" onClick={() => handleCommand("start")}>
+                        docker start
+                      </button>
+                    ) : null}
+
+                    <button type="button" className="button" onClick={() => handleCommand("commit")}>
+                      docker commit
+                    </button>
+
+                    {menu.cubeState !== "running" ? (
+                      <button type="button" className="button button-secondary" onClick={() => handleCommand("restart")}>
+                        docker restart
+                      </button>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {gameState === "gameover" ? (
+            <div className="fleet-gameover">
+              <div className="fleet-gameover-card">
+                <h2>Fleet Sunk</h2>
+                <p>Too many containers crashed. The whale could not keep the load stable.</p>
+                <div className="fleet-final-score">
+                  <span>Final Throughput</span>
+                  <strong>{score}</strong>
+                </div>
+                <button type="button" className="button" onClick={restartGame}>
+                  Redeploy Fleet
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="panel fleet-info-panel">
+        <div className="fleet-title-row">
+          <div className="fleet-title-card fleet-title-card-compact">
+            <div>
+              <p className="fleet-kicker">Docker Fleet</p>
+              <h2>Whale Ops</h2>
+              <span>Captain: {playerName}</span>
+            </div>
+            <p>Click a container to open the terminal menu.</p>
+          </div>
+
+          <div className="fleet-health-card fleet-health-card-compact">
+            <div className="fleet-card-header">
+              <span>Ship Integrity</span>
+              <strong>{Math.ceil(health)}%</strong>
+            </div>
+            <div className="fleet-health-bar">
+              <div
+                className={
+                  health > 60
+                    ? "fleet-health-fill fleet-health-good"
+                    : health > 30
+                      ? "fleet-health-fill fleet-health-warning"
+                      : "fleet-health-fill fleet-health-danger"
+                }
+                style={{ width: `${Math.max(0, health)}%` }}
+              />
+            </div>
+            <small>{getHealthLabel(health)}</small>
+          </div>
+        </div>
+
+        <div className="fleet-score-card fleet-score-card-compact">
+          {stats.map((item) => (
+            <div className="fleet-score-chip" key={item.label}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="game-layout">
         <div className="game-main-column">
           <section className="panel">
-            <GameScenePlaceholder />
-          </section>
-
-          <section className="panel">
-            <h2>Action Panel</h2>
-            <div className="action-grid">
-              <button type="button" className="button" onClick={() => handleAction("buildImage")}>
-                Build Image
-              </button>
-              <button
-                type="button"
-                className="button"
-                onClick={() => handleAction("startContainer")}
-              >
-                Start Container
-              </button>
-              <button
-                type="button"
-                className="button"
-                onClick={() => handleAction("restartService")}
-              >
-                Restart Service
-              </button>
-              <button type="button" className="button" onClick={() => handleAction("patchLeak")}>
-                Patch Leak
-              </button>
+            <h2>Fleet Status</h2>
+            <div className="hud-list">
+              <div className="hud-row">
+                <span>Running Containers</span>
+                <strong>{fleetCounts.runningCount}</strong>
+              </div>
+              <div className="hud-row">
+                <span>Crashed Containers</span>
+                <strong>{fleetCounts.crashedCount}</strong>
+              </div>
+              <div className="hud-row">
+                <span>Stopped Containers</span>
+                <strong>{fleetCounts.stoppedCount}</strong>
+              </div>
+              <div className="hud-row">
+                <span>Backend Status</span>
+                <strong>{saveState}</strong>
+              </div>
             </div>
-
-            <p className="todo-note">
-              These buttons use simple mock rules. They are here to show progress
-              flow, not final gameplay mechanics.
-            </p>
-          </section>
-
-          <section className="panel">
-            <h2>Mission Notes</h2>
-            <p className="todo-note">
-              This screen now uses local mock state. It still does not include final
-              Docker game rules, balancing, or win conditions.
-            </p>
-            <ul>
-              <li>Scene rendering is active with Three.js.</li>
-              <li>Buttons update score, XP, health, and mission progress in a fixed way.</li>
-              <li>Later phases should replace this with real gameplay events and backend saves.</li>
-            </ul>
           </section>
         </div>
 
         <aside className="game-side-column">
           <section className="panel">
-            <h2>HUD</h2>
-            <div className="hud-list">
-              <div className="hud-row">
-                <span>Current Mission</span>
-                <strong>Container Recovery</strong>
-              </div>
-              <div className="hud-row">
-                <span>Alert Level</span>
-                <strong>{gameState.containerHealth >= 80 ? "Low" : "Medium"}</strong>
-              </div>
-              <div className="hud-row">
-                <span>Mission State</span>
-                <strong>{gameState.missionStatus}</strong>
-              </div>
-            </div>
-          </section>
-
-          <section className="panel">
-            <h2>Mission Flow</h2>
-            <ol className="mission-list">
-              {missionSteps.map((step, index) => (
-                <li
-                  key={step}
-                  className={index < gameState.missionIndex ? "mission-step-complete" : ""}
-                >
-                  {step}
-                </li>
-              ))}
-            </ol>
-          </section>
-
-          <section className="panel">
             <h2>Achievements</h2>
             <div className="achievement-list">
-              {gameState.achievements.map((achievement) => (
+              {achievements.map((achievement) => (
                 <div className="achievement-card" key={achievement.key}>
                   <div>
                     <strong>{achievement.title}</strong>
@@ -159,30 +385,13 @@ function GamePage() {
           </section>
 
           <section className="panel">
-            <h2>Recent Match Result</h2>
-            <div className="hud-list">
-              <div className="hud-row">
-                <span>Status</span>
-                <strong>{gameState.recentMatchResult.result}</strong>
-              </div>
-              <div className="hud-row">
-                <span>Score Earned</span>
-                <strong>{gameState.recentMatchResult.scoreEarned}</strong>
-              </div>
-              <div className="hud-row">
-                <span>XP Earned</span>
-                <strong>{gameState.recentMatchResult.xpEarned}</strong>
-              </div>
-            </div>
-            <p className="todo-note">{gameState.recentMatchResult.summary}</p>
-          </section>
-
-          <section className="panel">
-            <h2>Next Work</h2>
-            <p className="todo-note">
-              TODO: replace these mock actions with real scene events, mission rules,
-              and backend save logic.
-            </p>
+            <h2>How To Play</h2>
+            <ul>
+              <li>Click a container on the whale.</li>
+              <li>Use docker commands from the terminal menu.</li>
+              <li>Restart crashed containers before ship integrity reaches zero.</li>
+              <li>Use docker commit on running containers to raise score and XP.</li>
+            </ul>
           </section>
         </aside>
       </section>

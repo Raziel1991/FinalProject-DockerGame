@@ -1,9 +1,18 @@
-const missionSteps = [
-  "Build the base image",
-  "Start the main container",
-  "Restart unstable services",
-  "Patch the system leak"
+const missionQueue = [
+  "buildImage",
+  "startContainer",
+  "restartService",
+  "patchLeak",
+  "startContainer",
+  "patchLeak"
 ];
+
+const actionLabels = {
+  buildImage: "Build Image",
+  startContainer: "Start Container",
+  restartService: "Restart Service",
+  patchLeak: "Patch Leak"
+};
 
 const baseAchievements = [
   {
@@ -15,41 +24,16 @@ const baseAchievements = [
   {
     key: "service-keeper",
     title: "Service Keeper",
-    description: "Raise container health to 90% or more.",
+    description: "Keep container health at 90 or more.",
     unlocked: false
   },
   {
     key: "mission-ready",
     title: "Mission Ready",
-    description: "Finish all mock mission steps.",
+    description: "Finish the full mission route.",
     unlocked: false
   }
 ];
-
-export function createInitialGameState() {
-  return {
-    score: 1250,
-    xp: 340,
-    level: 3,
-    containerHealth: 84,
-    missionStatus: "Standby",
-    missionIndex: 0,
-    missionProgress: 0,
-    achievements: baseAchievements,
-    recentMatchResult: {
-      result: "No match played yet",
-      scoreEarned: 0,
-      xpEarned: 0,
-      summary: "Run a few mock actions to simulate a mission result."
-    },
-    actionCounts: {
-      buildImage: 0,
-      startContainer: 0,
-      restartService: 0,
-      patchLeak: 0
-    }
-  };
-}
 
 function getLevelFromXp(xp) {
   return Math.max(1, Math.floor(xp / 150) + 1);
@@ -59,7 +43,16 @@ function clampHealth(health) {
   return Math.max(0, Math.min(100, health));
 }
 
-function unlockAchievements(state) {
+function buildMatchResult({ result, scoreEarned, xpEarned, summary }) {
+  return {
+    result,
+    scoreEarned,
+    xpEarned,
+    summary
+  };
+}
+
+function updateAchievements(state) {
   return state.achievements.map((achievement) => {
     if (achievement.key === "first-build" && state.actionCounts.buildImage >= 1) {
       return { ...achievement, unlocked: true };
@@ -69,7 +62,7 @@ function unlockAchievements(state) {
       return { ...achievement, unlocked: true };
     }
 
-    if (achievement.key === "mission-ready" && state.missionIndex >= missionSteps.length) {
+    if (achievement.key === "mission-ready" && state.isMissionComplete) {
       return { ...achievement, unlocked: true };
     }
 
@@ -77,102 +70,223 @@ function unlockAchievements(state) {
   });
 }
 
-function buildRecentMatchResult(state, scoreEarned, xpEarned, summary) {
+function withAchievements(state) {
   return {
-    result: state.missionIndex >= missionSteps.length ? "Mock Mission Complete" : "Mock Mission Active",
-    scoreEarned,
-    xpEarned,
-    summary
+    ...state,
+    achievements: updateAchievements(state)
   };
 }
 
-export function applyMockAction(previousState, actionKey) {
-  const actionMap = {
-    buildImage: {
-      scoreDelta: 100,
-      xpDelta: 25,
-      healthDelta: -2,
-      missionStatus: "Image Built",
-      summary: "The image build finished. The system is ready for the next step."
-    },
-    startContainer: {
-      scoreDelta: 140,
-      xpDelta: 35,
-      healthDelta: 4,
-      missionStatus: "Container Running",
-      summary: "The main container started and system pressure is stable."
-    },
-    restartService: {
-      scoreDelta: 90,
-      xpDelta: 20,
-      healthDelta: 12,
-      missionStatus: "Service Restarted",
-      summary: "Core services restarted. Uptime improved."
-    },
-    patchLeak: {
-      scoreDelta: 120,
-      xpDelta: 30,
-      healthDelta: 16,
-      missionStatus: "Leak Patched",
-      summary: "The leak is patched. The mock mission is close to stable."
+export function createInitialGameState() {
+  return {
+    score: 1250,
+    xp: 340,
+    level: 3,
+    containerHealth: 84,
+    missionProgress: 0,
+    missionStatus: "Ready to start",
+    missionIndex: 0,
+    missionQueue,
+    currentObjective: missionQueue[0],
+    timeLeft: 60,
+    isMissionActive: false,
+    isMissionComplete: false,
+    isMissionFailed: false,
+    feedbackMessage: "Press Start Mission to begin the Docker recovery run.",
+    achievements: baseAchievements,
+    recentMatchResult: buildMatchResult({
+      result: "No match played yet",
+      scoreEarned: 0,
+      xpEarned: 0,
+      summary: "Complete the mission route to record a real result."
+    }),
+    actionCounts: {
+      buildImage: 0,
+      startContainer: 0,
+      restartService: 0,
+      patchLeak: 0
     }
   };
+}
 
-  const action = actionMap[actionKey];
+export function startMission(previousState) {
+  return {
+    ...previousState,
+    timeLeft: 60,
+    containerHealth: 100,
+    missionProgress: 0,
+    missionStatus: "Mission running",
+    missionIndex: 0,
+    currentObjective: missionQueue[0],
+    isMissionActive: true,
+    isMissionComplete: false,
+    isMissionFailed: false,
+    feedbackMessage: `Current objective: ${actionLabels[missionQueue[0]]}.`,
+    recentMatchResult: buildMatchResult({
+      result: "Mission started",
+      scoreEarned: 0,
+      xpEarned: 0,
+      summary: "Follow the mission order before time runs out."
+    })
+  };
+}
 
-  if (!action) {
+export function runMissionTick(previousState) {
+  if (!previousState.isMissionActive) {
     return previousState;
   }
 
-  const nextMissionIndex = Math.min(previousState.missionIndex + 1, missionSteps.length);
-  const nextXp = previousState.xp + action.xpDelta;
+  const nextTimeLeft = Math.max(0, previousState.timeLeft - 1);
+  const nextHealth = clampHealth(previousState.containerHealth - 1);
+
+  if (nextTimeLeft === 0 || nextHealth === 0) {
+    const failedState = {
+      ...previousState,
+      timeLeft: nextTimeLeft,
+      containerHealth: nextHealth,
+      isMissionActive: false,
+      isMissionFailed: true,
+      missionStatus: nextHealth === 0 ? "Container failure" : "Mission timeout",
+      feedbackMessage:
+        nextHealth === 0
+          ? "The container grid collapsed. Restart the mission."
+          : "Time expired before the mission route was completed.",
+      recentMatchResult: buildMatchResult({
+        result: "Mission failed",
+        scoreEarned: 0,
+        xpEarned: 0,
+        summary:
+          nextHealth === 0
+            ? "Failure: container health dropped to zero."
+            : "Failure: mission timer reached zero."
+      })
+    };
+
+    return withAchievements(failedState);
+  }
+
+  return withAchievements({
+    ...previousState,
+    timeLeft: nextTimeLeft,
+    containerHealth: nextHealth
+  });
+}
+
+export function applyMockAction(previousState, actionKey) {
+  if (!previousState.isMissionActive || previousState.isMissionComplete || previousState.isMissionFailed) {
+    return previousState;
+  }
+
+  const expectedAction = previousState.currentObjective;
+  const wasCorrect = actionKey === expectedAction;
+
+  if (!wasCorrect) {
+    const wrongState = {
+      ...previousState,
+      score: Math.max(0, previousState.score - 60),
+      containerHealth: clampHealth(previousState.containerHealth - 12),
+      missionStatus: "Wrong action",
+      feedbackMessage: `Wrong move. Expected ${actionLabels[expectedAction]}.`,
+      recentMatchResult: buildMatchResult({
+        result: "Mission active",
+        scoreEarned: -60,
+        xpEarned: 0,
+        summary: `Wrong action used. Expected ${actionLabels[expectedAction]}.`
+      }),
+      actionCounts: {
+        ...previousState.actionCounts,
+        [actionKey]: previousState.actionCounts[actionKey] + 1
+      }
+    };
+
+    if (wrongState.containerHealth === 0) {
+      return withAchievements({
+        ...wrongState,
+        isMissionActive: false,
+        isMissionFailed: true,
+        missionStatus: "Container failure",
+        feedbackMessage: "Container health reached zero. Mission failed.",
+        recentMatchResult: buildMatchResult({
+          result: "Mission failed",
+          scoreEarned: -60,
+          xpEarned: 0,
+          summary: "Failure: wrong action caused total container failure."
+        })
+      });
+    }
+
+    return withAchievements(wrongState);
+  }
+
+  const nextMissionIndex = previousState.missionIndex + 1;
+  const nextXp = previousState.xp + 35;
+  const nextScore = previousState.score + 150;
+  const nextProgress = Math.round((nextMissionIndex / previousState.missionQueue.length) * 100);
+  const nextObjective = previousState.missionQueue[nextMissionIndex] || null;
+
   const nextState = {
     ...previousState,
-    score: previousState.score + action.scoreDelta,
+    score: nextScore,
     xp: nextXp,
     level: getLevelFromXp(nextXp),
-    containerHealth: clampHealth(previousState.containerHealth + action.healthDelta),
-    missionStatus:
-      nextMissionIndex >= missionSteps.length ? "Mission Complete" : action.missionStatus,
+    containerHealth: clampHealth(previousState.containerHealth + 5),
     missionIndex: nextMissionIndex,
-    missionProgress: Math.round((nextMissionIndex / missionSteps.length) * 100),
+    missionProgress: nextProgress,
+    currentObjective: nextObjective,
+    missionStatus: nextObjective ? "Objective cleared" : "Mission complete",
+    feedbackMessage: nextObjective
+      ? `Good move. Next objective: ${actionLabels[nextObjective]}.`
+      : "All objectives complete. Mission success.",
     actionCounts: {
       ...previousState.actionCounts,
       [actionKey]: previousState.actionCounts[actionKey] + 1
-    }
+    },
+    recentMatchResult: buildMatchResult({
+      result: nextObjective ? "Mission active" : "Mission complete",
+      scoreEarned: nextObjective ? 150 : 450,
+      xpEarned: nextObjective ? 35 : 135,
+      summary: nextObjective
+        ? `${actionLabels[actionKey]} completed successfully.`
+        : "Mission completed. Bonus score and XP awarded."
+    })
   };
 
-  const achievements = unlockAchievements(nextState);
+  if (!nextObjective) {
+    return withAchievements({
+      ...nextState,
+      score: nextState.score + 300,
+      xp: nextState.xp + 100,
+      level: getLevelFromXp(nextState.xp + 100),
+      isMissionActive: false,
+      isMissionComplete: true
+    });
+  }
 
-  return {
-    ...nextState,
-    achievements,
-    recentMatchResult: buildRecentMatchResult(
-      nextState,
-      action.scoreDelta,
-      action.xpDelta,
-      action.summary
-    )
-  };
+  return withAchievements(nextState);
 }
 
 export function getMockMissionSteps() {
-  return missionSteps;
+  return missionQueue.map((step) => actionLabels[step]);
+}
+
+export function getObjectiveLabel(objectiveKey) {
+  return objectiveKey ? actionLabels[objectiveKey] : "None";
 }
 
 export function getMockLeaderboard(currentGameState) {
   const rows = [
-    { rank: 1, player: "stackCaptain", level: 6, score: 2280, status: "Top Demo Score" },
-    { rank: 2, player: "portMapper", level: 5, score: 1975, status: "Stable Build" },
-    { rank: 3, player: "yamlWizard", level: 5, score: 1840, status: "Fast Recovery" }
+    { rank: 1, player: "stackCaptain", level: 6, xp: 910, score: 2280, status: "Mission Complete" },
+    { rank: 2, player: "portMapper", level: 5, xp: 760, score: 1975, status: "Stable Build" },
+    { rank: 3, player: "yamlWizard", level: 5, xp: 720, score: 1840, status: "Fast Recovery" }
   ];
 
   const playerRow = {
     rank: 4,
     player: "dockerCadet",
     level: currentGameState?.level ?? 3,
+    xp: currentGameState?.xp ?? 340,
     score: currentGameState?.score ?? 1250,
-    status: currentGameState?.missionStatus ?? "Standby"
+    status: currentGameState?.missionStatus ?? "Ready to start"
   };
 
   return [...rows, playerRow].sort((a, b) => b.score - a.score).map((row, index) => ({
@@ -184,6 +298,3 @@ export function getMockLeaderboard(currentGameState) {
 export function getMockAchievements() {
   return baseAchievements;
 }
-
-// TODO: Replace this file with GraphQL operations such as saveGameProgress,
-// getLeaderboard, and getAchievements when the backend contract is ready.

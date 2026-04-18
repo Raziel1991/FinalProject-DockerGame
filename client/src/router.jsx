@@ -6,6 +6,7 @@ import DashboardPage from "./pages/DashboardPage";
 import GamePage from "./pages/GamePage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import ProfilePage from "./pages/ProfilePage";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 export const router = createBrowserRouter([
   {
@@ -22,11 +23,19 @@ export const router = createBrowserRouter([
   },
   {
     path: "/dashboard",
-    element: <DashboardPage />
+    element: (
+      <ProtectedRoute>
+        <DashboardPage />
+      </ProtectedRoute>
+    )
   },
   {
     path: "/game",
-    element: <GamePage />
+    element: (
+      <ProtectedRoute>
+        <GamePage />
+      </ProtectedRoute>
+    )
   },
   {
     path: "/leaderboard",
@@ -34,6 +43,10 @@ export const router = createBrowserRouter([
   },
   {
     path: "/profile",
-    element: <ProfilePage />
+    element: (
+      <ProtectedRoute>
+        <ProfilePage />
+      </ProtectedRoute>
+    )
   }
 ]);

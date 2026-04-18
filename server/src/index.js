@@ -8,6 +8,8 @@ import healthRouter from "./routes/health.routes.js";
 import { buildContext } from "./graphql/context.js";
 import { resolvers } from "./graphql/resolvers/index.js";
 import { typeDefs } from "./graphql/schema/index.js";
+import { ensureDevDemoUser } from "./utils/ensureDevDemoUser.js";
+import { ensureDevPresentationData } from "./utils/ensureDevPresentationData.js";
 
 const port = Number(process.env.PORT) || 4000;
 const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
@@ -19,6 +21,8 @@ const apolloServer = new ApolloServer({
 });
 
 await connectToDatabase();
+await ensureDevDemoUser();
+await ensureDevPresentationData();
 await apolloServer.start();
 
 app.use(

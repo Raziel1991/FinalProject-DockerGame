@@ -1,42 +1,61 @@
+import { useEffect, useState } from "react";
 import PageLayout from "../components/PageLayout";
-import { createInitialGameState, getMockLeaderboard } from "../services/mockGameService";
+import { getLeaderboard } from "../graphql/gameApi";
 
 function LeaderboardPage() {
-  const leaderboardRows = getMockLeaderboard(createInitialGameState());
+  const [leaderboardRows, setLeaderboardRows] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadLeaderboard() {
+      const rows = await getLeaderboard();
+      setLeaderboardRows(rows);
+      setIsLoading(false);
+    }
+
+    loadLeaderboard();
+  }, []);
 
   return (
     <PageLayout
       title="Leaderboard"
-      description="Mock leaderboard for Phase 3. This page can switch to GraphQL data later."
+      description="Live leaderboard data from GraphQL and MongoDB, sorted by score."
     >
       <section className="panel">
-        <table className="leaderboard-table">
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>Player</th>
-              <th>Level</th>
-              <th>Score</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {leaderboardRows.map((row) => (
-              <tr key={row.rank}>
-                <td>{row.rank}</td>
-                <td>{row.player}</td>
-                <td>{row.level}</td>
-                <td>{row.score}</td>
-                <td>{row.status}</td>
+        {isLoading ? (
+          <p className="todo-note">Loading leaderboard...</p>
+        ) : leaderboardRows.length === 0 ? (
+          <div>
+            <h2>No Scores Yet</h2>
+            <p className="todo-note">
+              No leaderboard entries have been saved yet. Play a session and save
+              progress to create the first ranking.
+            </p>
+          </div>
+        ) : (
+          <table className="leaderboard-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Player</th>
+                <th>Score</th>
+                <th>Level</th>
+                <th>XP</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <p className="todo-note">
-          TODO: replace this mock table with the GraphQL leaderboard query when the
-          backend save and ranking flow is ready.
-        </p>
+            </thead>
+            <tbody>
+              {leaderboardRows.map((row) => (
+                <tr key={`${row.rank}-${row.player}`}>
+                  <td>{row.rank}</td>
+                  <td>{row.player}</td>
+                  <td>{row.score}</td>
+                  <td>{row.level ?? "-"}</td>
+                  <td>{row.xp ?? "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
     </PageLayout>
   );

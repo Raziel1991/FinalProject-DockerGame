@@ -5,30 +5,30 @@ function HomePage() {
   return (
     <PageLayout
       title="Docker Heist"
-      description="Starter shell for a Docker-themed web game. Gameplay is intentionally not implemented in Phase 1."
+      description="Docker-themed web game with authentication, GraphQL progress tracking, achievements, challenges, and leaderboard support."
     >
       <section className="card-grid">
         <article className="panel">
           <h2>Project Status</h2>
           <p>
-            React routes, GraphQL wiring, MongoDB models, and JWT auth scaffolding
-            are ready for the next phase.
+            The app now includes real login, registration, protected routes, progress
+            saving, dashboard data, and a live leaderboard.
           </p>
         </article>
 
         <article className="panel">
-          <h2>Phase 1 Scope</h2>
+          <h2>Core Features</h2>
           <p>
-            Use this phase to demonstrate architecture, API structure, and the
-            assignment-aligned data model.
+            Play the mock Docker mission, save progress to MongoDB, unlock achievements,
+            and compare scores on the leaderboard.
           </p>
         </article>
 
         <article className="panel">
-          <h2>Next Step</h2>
+          <h2>Presentation Ready</h2>
           <p>
-            Implement one playable Docker-themed gameplay loop in the Game page
-            using Three.js.
+            Development demo accounts and seeded presentation data are available for
+            faster testing during class demos.
           </p>
         </article>
       </section>
