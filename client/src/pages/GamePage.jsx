@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PageLayout from "../components/PageLayout";
 import GameScenePlaceholder from "../components/GameScenePlaceholder";
-import { getAchievements, getCurrentUser, saveGameProgress } from "../graphql/gameApi";
+import {
+  completeChallenge,
+  getAchievements,
+  getChallenges,
+  getCurrentUser,
+  getLiveGameEvents,
+  saveGameProgress
+} from "../graphql/gameApi";
 
 function buildAchievementList(score, health, commandCounts) {
   return [
@@ -64,6 +71,10 @@ function buildSavePayload(score, health, xp, level) {
   };
 }
 
+function getCommandCount(commandCounts) {
+  return Object.values(commandCounts).reduce((total, value) => total + value, 0);
+}
+
 function GamePage() {
   const [gameId, setGameId] = useState(0);
   const [playerName, setPlayerName] = useState("dockerCadet");
@@ -75,6 +86,9 @@ function GamePage() {
   const [menu, setMenu] = useState(null);
   const [commandRequest, setCommandRequest] = useState(null);
   const [saveState, setSaveState] = useState("Local session running");
+  const [challenges, setChallenges] = useState([]);
+  const [activeChallenge, setActiveChallenge] = useState(null);
+  const [liveEvents, setLiveEvents] = useState([]);
   const [fleetCounts, setFleetCounts] = useState({
     runningCount: 0,
     crashedCount: 0,
@@ -90,9 +104,11 @@ function GamePage() {
 
   useEffect(() => {
     async function loadUserData() {
-      const [currentUser, backendAchievements] = await Promise.all([
+      const [currentUser, backendAchievements, backendChallenges, backendEvents] = await Promise.all([
         getCurrentUser(),
-        getAchievements()
+        getAchievements(),
+        getChallenges(),
+        getLiveGameEvents()
       ]);
 
       if (currentUser?.username) {
@@ -103,9 +119,21 @@ function GamePage() {
       if (backendAchievements?.length) {
         setAchievementOverrides(backendAchievements);
       }
+
+      setChallenges(backendChallenges);
+      setLiveEvents(backendEvents);
     }
 
     loadUserData();
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(async () => {
+      const events = await getLiveGameEvents();
+      setLiveEvents(events);
+    }, 3500);
+
+    return () => window.clearInterval(intervalId);
   }, []);
 
   const localAchievements = useMemo(
@@ -142,7 +170,7 @@ function GamePage() {
     setGameState("playing");
     setMenu(null);
     setCommandRequest(null);
-    setSaveState("New fleet deployed");
+    setSaveState(activeChallenge ? "Challenge run restarted" : "New fleet deployed");
     setFleetCounts({
       runningCount: 0,
       crashedCount: 0,
@@ -155,7 +183,7 @@ function GamePage() {
       }
     });
     setGameId((currentId) => currentId + 1);
-  }, []);
+  }, [activeChallenge]);
 
   function handleStatsChange(nextStats) {
     const roundedScore = Math.floor(nextStats.score);
@@ -186,8 +214,61 @@ function GamePage() {
     setFleetCounts(finalStats);
 
     const savePayload = buildSavePayload(finalScore, finalHealth, finalXp, finalLevel);
-    const saved = await saveGameProgress(savePayload);
-    setSaveState(saved ? "Game over saved to backend" : "Game over saved locally only");
+    const saved = activeChallenge
+      ? await completeChallenge({
+          ...savePayload,
+          challengeId: activeChallenge.id,
+          commandCount: getCommandCount(finalStats.commandCounts)
+        })
+      : await saveGameProgress(savePayload);
+
+    setSaveState(
+      saved
+        ? activeChallenge
+          ? "AI challenge result saved"
+          : "Game over saved to backend"
+        : "Game over saved locally only"
+    );
+
+    if (saved?.liveEvents) {
+      setLiveEvents(saved.liveEvents);
+    }
+  }
+
+  async function handleSubmitChallenge() {
+    if (!activeChallenge) {
+      setSaveState("Select a challenge before submitting.");
+      return;
+    }
+
+    const payload = buildSavePayload(score, health, xp, level);
+    const saved = await completeChallenge({
+      ...payload,
+      challengeId: activeChallenge.id,
+      commandCount: getCommandCount(fleetCounts.commandCounts)
+    });
+
+    setSaveState(saved ? "AI challenge result saved" : "Challenge save failed");
+
+    if (saved?.liveEvents) {
+      setLiveEvents(saved.liveEvents);
+    }
+
+    if (saved?.challenge?.status) {
+      setChallenges((items) =>
+        items.map((challenge) =>
+          challenge.id === saved.challenge.id
+            ? { ...challenge, status: saved.challenge.status }
+            : challenge
+        )
+      );
+    }
+  }
+
+  function handleSelectChallenge(challenge) {
+    restartGame();
+    setActiveChallenge(challenge);
+    setSaveState(`Challenge armed: ${challenge.title}`);
   }
 
   function handleCommand(command) {
@@ -356,6 +437,43 @@ function GamePage() {
                 <span>Backend Status</span>
                 <strong>{saveState}</strong>
               </div>
+              <div className="hud-row">
+                <span>Active Challenge</span>
+                <strong>{activeChallenge?.title || "Solo Run"}</strong>
+              </div>
+            </div>
+          </section>
+
+          <section className="panel">
+            <h2>Async AI Challenge Mode</h2>
+            <div className="challenge-list">
+              {challenges.map((challenge) => (
+                <button
+                  type="button"
+                  className={
+                    activeChallenge?.id === challenge.id
+                      ? "challenge-card challenge-card-active"
+                      : "challenge-card"
+                  }
+                  key={challenge.id}
+                  onClick={() => handleSelectChallenge(challenge)}
+                >
+                  <strong>{challenge.title}</strong>
+                  <span>{challenge.description}</span>
+                  <small>
+                    {challenge.rewardXp} XP / {challenge.rewardCredits} credits / {challenge.status}
+                  </small>
+                </button>
+              ))}
+            </div>
+
+            <div className="button-row">
+              <button type="button" className="button" onClick={handleSubmitChallenge}>
+                Submit AI Challenge
+              </button>
+              <button type="button" className="button button-secondary" onClick={() => setActiveChallenge(null)}>
+                Solo Mode
+              </button>
             </div>
           </section>
         </div>
@@ -392,6 +510,25 @@ function GamePage() {
               <li>Restart crashed containers before ship integrity reaches zero.</li>
               <li>Use docker commit on running containers to raise score and XP.</li>
             </ul>
+          </section>
+
+          <section className="panel">
+            <h2>Live Game Events</h2>
+            <div className="event-list">
+              {liveEvents.length ? (
+                liveEvents.slice(0, 5).map((event) => (
+                  <div className="event-card" key={event.id}>
+                    <strong>{event.type}</strong>
+                    <p>{event.message}</p>
+                    <span>
+                      Score {event.score} / Health {event.health}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="todo-note">No live events yet. Save a run or submit a challenge.</p>
+              )}
+            </div>
           </section>
         </aside>
       </section>

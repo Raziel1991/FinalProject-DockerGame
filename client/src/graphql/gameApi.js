@@ -49,6 +49,14 @@ const DASHBOARD_QUERY = gql`
         rewardCredits
         status
       }
+      liveEvents {
+        id
+        type
+        message
+        score
+        health
+        createdAt
+      }
     }
   }
 `;
@@ -67,6 +75,7 @@ const PROFILE_QUERY = gql`
         level
         xp
         totalScore
+        credits
         currentStage
         unlockedCosmetics
       }
@@ -89,6 +98,33 @@ const GET_ACHIEVEMENTS_QUERY = gql`
       title
       description
       completed
+    }
+  }
+`;
+
+const GET_CHALLENGES_QUERY = gql`
+  query GetChallenges {
+    challenges {
+      id
+      title
+      description
+      type
+      rewardXp
+      rewardCredits
+      status
+    }
+  }
+`;
+
+const LIVE_GAME_EVENTS_QUERY = gql`
+  query LiveGameEvents {
+    liveGameEvents {
+      id
+      type
+      message
+      score
+      health
+      createdAt
     }
   }
 `;
@@ -141,7 +177,81 @@ const SAVE_GAME_PROGRESS_MUTATION = gql`
         rank
         score
       }
+      liveEvents {
+        id
+        type
+        message
+        score
+        health
+        createdAt
+      }
     }
+  }
+`;
+
+const COMPLETE_CHALLENGE_MUTATION = gql`
+  mutation CompleteChallenge($input: CompleteChallengeInput!) {
+    completeChallenge(input: $input) {
+      profile {
+        id
+        level
+        xp
+        totalScore
+        credits
+        containerHealth
+        missionProgress
+        missionStatus
+        unlockedCosmetics
+      }
+      challenge {
+        id
+        title
+        status
+      }
+      recentMatchResult {
+        id
+        result
+        scoreEarned
+        xpEarned
+        notes
+      }
+      leaderboardEntry {
+        id
+        rank
+        score
+      }
+      liveEvents {
+        id
+        type
+        message
+        score
+        health
+        createdAt
+      }
+    }
+  }
+`;
+
+const RESET_PROGRESS_MUTATION = gql`
+  mutation ResetMyGameProgress {
+    resetMyGameProgress {
+      id
+      level
+      xp
+      totalScore
+      credits
+      currentStage
+      containerHealth
+      missionProgress
+      missionStatus
+      unlockedCosmetics
+    }
+  }
+`;
+
+const CLEAR_MATCH_HISTORY_MUTATION = gql`
+  mutation ClearMyMatchHistory {
+    clearMyMatchHistory
   }
 `;
 
@@ -173,6 +283,32 @@ export async function getAchievements() {
     }));
   } catch {
     return getMockAchievements();
+  }
+}
+
+export async function getChallenges() {
+  try {
+    const { data } = await graphqlClient.query({
+      query: GET_CHALLENGES_QUERY,
+      fetchPolicy: "network-only"
+    });
+
+    return data.challenges || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getLiveGameEvents() {
+  try {
+    const { data } = await graphqlClient.query({
+      query: LIVE_GAME_EVENTS_QUERY,
+      fetchPolicy: "network-only"
+    });
+
+    return data.liveGameEvents || [];
+  } catch {
+    return [];
   }
 }
 
@@ -215,7 +351,8 @@ export async function saveGameProgress(gameState) {
           result: gameState.recentMatchResult.result,
           scoreEarned: gameState.recentMatchResult.scoreEarned,
           xpEarned: gameState.recentMatchResult.xpEarned,
-          notes: gameState.recentMatchResult.summary
+          notes: gameState.recentMatchResult.summary,
+          challengeId: gameState.challengeId || null
         }
       }
     });
@@ -223,6 +360,53 @@ export async function saveGameProgress(gameState) {
     return data.saveGameProgress;
   } catch {
     return null;
+  }
+}
+
+export async function completeChallenge(gameState) {
+  try {
+    const { data } = await graphqlClient.mutate({
+      mutation: COMPLETE_CHALLENGE_MUTATION,
+      variables: {
+        input: {
+          challengeId: gameState.challengeId,
+          score: gameState.score,
+          xp: gameState.xp,
+          level: gameState.level,
+          containerHealth: gameState.containerHealth,
+          missionProgress: gameState.missionProgress,
+          commandCount: gameState.commandCount
+        }
+      }
+    });
+
+    return data.completeChallenge;
+  } catch {
+    return null;
+  }
+}
+
+export async function resetGameProgress() {
+  try {
+    const { data } = await graphqlClient.mutate({
+      mutation: RESET_PROGRESS_MUTATION
+    });
+
+    return data.resetMyGameProgress;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearMatchHistory() {
+  try {
+    const { data } = await graphqlClient.mutate({
+      mutation: CLEAR_MATCH_HISTORY_MUTATION
+    });
+
+    return Boolean(data.clearMyMatchHistory);
+  } catch {
+    return false;
   }
 }
 

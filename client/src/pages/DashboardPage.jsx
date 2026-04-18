@@ -51,6 +51,7 @@ function DashboardPage() {
               <p>Status: {dashboard?.profile?.missionStatus || "Standby"}</p>
               <p>Progress: {dashboard?.profile?.missionProgress ?? 0}%</p>
               <p>Container Health: {dashboard?.profile?.containerHealth ?? 0}%</p>
+              <p>Credits: {dashboard?.profile?.credits ?? 0}</p>
             </article>
 
             <article className="panel">
@@ -97,6 +98,25 @@ function DashboardPage() {
                 <p className="todo-note">No active challenges available.</p>
               )}
             </article>
+          </section>
+
+          <section className="panel">
+            <h2>Live Game Events</h2>
+            {dashboard?.liveEvents?.length ? (
+              <div className="event-list">
+                {dashboard.liveEvents.slice(0, 6).map((event) => (
+                  <div className="event-card" key={event.id}>
+                    <strong>{event.type}</strong>
+                    <p>{event.message}</p>
+                    <span>
+                      Score {event.score} / Health {event.health}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="todo-note">No live game events yet.</p>
+            )}
           </section>
         </>
       )}
