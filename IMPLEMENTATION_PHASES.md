@@ -12,47 +12,54 @@ Completed in this scaffold:
 - Frontend route and page stubs
 - README and project instructions
 
-## Phase 2 - Core App Wiring
+## Phase 2 - Exercise 2 Completion
 
-Target outcomes:
+Completed outcomes:
 
 - Connect frontend forms to GraphQL mutations
 - Persist JWT token in local storage
 - Add protected route handling for dashboard, game, and profile pages
 - Load real data for `me`, `gameProfile`, `leaderboard`, and `challenges`
 - Add seed data for demo presentation
+- Add interactive Three.js gameplay
+- Add async AI challenge completion
+- Add live game event feed
+- Add rewards: XP, credits, achievements, and cosmetic unlocks
+- Add progress reset and match-history clearing operations
 
-Key tasks:
+Completed tasks:
 
-- Replace placeholder frontend data with GraphQL queries
-- Add auth state management
-- Add basic dashboard widgets
-- Add form validation and error states
+- Replaced placeholder frontend data with GraphQL queries
+- Added auth state management
+- Added dashboard widgets
+- Added form validation and error states
+- Added score, health, command, and game-over mechanics
+- Added GraphQL mutations for progress, challenge completion, reset, and history clearing
 
 ## Phase 3 - Gameplay Foundation
 
-Target outcomes:
+Completed outcomes:
 
-- Add a Three.js game scene inside the Game page
-- Implement one simple playable Docker-themed loop
-- Track score, XP, stage progress, and match results
-- Save progress through GraphQL mutations
+- Three.js game scene inside the Game page
+- Playable Docker-themed loop
+- Score, XP, stage progress, credits, cosmetics, and match results
+- Progress saved through GraphQL mutations
 
-Suggested gameplay scope:
+Current gameplay scope:
 
-- Avoid full multiplayer in the first playable version
-- Build one clear objective with scoring, timing, and success/failure states
-- Keep visuals simple and presentation-ready
+- Full multiplayer remains optional bonus scope
+- The game includes one clear objective with scoring, timing, crashes, recovery, and success/failure states
+- Visuals are simple and presentation-ready
 
-Suggested Docker-themed mechanics:
+Implemented Docker-themed mechanics:
 
-- Sort images into the correct containers
-- Match Docker commands to deployment outcomes
-- Avoid system failures while completing timed tasks
+- Click containers on a Docker whale
+- Use Docker command actions to recover or boost containers
+- Avoid system failures while throughput increases
 
 ## Phase 4 - Rewards and Progression
 
-Target outcomes:
+Completed outcomes:
 
 - Leveling system
 - Achievement unlock flow
@@ -64,17 +71,21 @@ Key tasks:
 
 - Award XP and credits after matches
 - Unlock achievements based on milestones
-- Track daily or weekly challenges
+- Track daily, weekly, and AI challenges
 - Show progression clearly in the frontend
 
 ## Phase 5 - Bonus and Presentation
 
 Optional features:
 
-- Socket.io multiplayer or asynchronous competition
-- AI-driven challenge behavior
+- Socket.io multiplayer
 - Polished animations and responsive UI improvements
 - Deployment to Vercel, Render, Railway, Azure, or similar
+
+Implemented bonus-style features:
+
+- Asynchronous AI challenge behavior
+- Backend live event feed for real-time presentation updates
 
 Presentation checklist:
 

@@ -96,11 +96,11 @@ export const placeholderChallenges = [
   {
     id: "placeholder-challenge-2",
     assignedTo: null,
-    title: "Image Sorting Drill",
-    description: "Classify ten images without triggering a system crash.",
+    title: "Adaptive Sentinel Duel",
+    description: "Outscore the AI while keeping container health above zero.",
     type: "weekly",
-    rewardXp: 180,
-    rewardCredits: 90,
+    rewardXp: 220,
+    rewardCredits: 120,
     isActive: true,
     status: "available",
     dueDate: new Date("2026-04-30T23:59:00.000Z")
@@ -128,6 +128,6 @@ export const placeholderMatches = [
     scoreEarned: 120,
     xpEarned: 20,
     completedAt: new Date("2026-04-11T18:30:00.000Z"),
-    notes: "TODO: replace with stored match history in Phase 3."
+    notes: "Stored match history example for dashboard demos."
   }
 ];

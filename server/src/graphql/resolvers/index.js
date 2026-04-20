@@ -13,6 +13,64 @@ import {
   placeholderMatches
 } from "../../utils/placeholderData.js";
 
+const gameActionEvents = [];
+
+function pushGameActionEvent({ user, type, message, score = 0, health = 100 }) {
+  const event = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    user: user || null,
+    type,
+    message,
+    score,
+    health,
+    createdAt: new Date()
+  };
+
+  gameActionEvents.unshift(event);
+  gameActionEvents.splice(25);
+
+  return event;
+}
+
+function getUserEvents(userId) {
+  return gameActionEvents.filter((event) => {
+    if (!event.user || !userId) {
+      return true;
+    }
+
+    return String(event.user._id || event.user.id || event.user) === String(userId);
+  });
+}
+
+async function rankLeaderboard() {
+  const rankedEntries = await LeaderboardEntry.find({ season: "Season 1", mode: "solo" })
+    .sort({ score: -1, achievedAt: 1 });
+
+  for (let index = 0; index < rankedEntries.length; index += 1) {
+    const entry = rankedEntries[index];
+    if (entry.rank !== index + 1) {
+      entry.rank = index + 1;
+      await entry.save();
+    }
+  }
+}
+
+function buildChallengeResult(input, challenge) {
+  const aiScore = Math.max(
+    180,
+    Math.round(challenge.rewardXp * 3.5 + input.commandCount * 18 + (100 - input.containerHealth) * 4)
+  );
+  const playerScore = input.score + input.containerHealth * 4 + input.commandCount * 25;
+  const success = input.missionProgress >= 70 && input.containerHealth > 0 && playerScore >= aiScore;
+
+  return {
+    aiScore,
+    playerScore,
+    success,
+    result: success ? "challenge-win" : "challenge-loss"
+  };
+}
+
 function requireAuth(currentUser) {
   if (!currentUser) {
     throw new GraphQLError("Authentication required.", {
@@ -47,6 +105,22 @@ async function syncAchievementsForProfile(profile) {
       xpReward: 100,
       badgeIcon: "star",
       completed: profile.missionProgress >= 100
+    },
+    {
+      key: "credit-hacker",
+      title: "Credit Hacker",
+      description: "Earn at least 100 credits from rewards.",
+      xpReward: 120,
+      badgeIcon: "coin",
+      completed: profile.credits >= 100
+    },
+    {
+      key: "cosmetic-unlocked",
+      title: "Cosmetic Unlocked",
+      description: "Unlock a cosmetic item from challenge rewards.",
+      xpReward: 90,
+      badgeIcon: "spark",
+      completed: profile.unlockedCosmetics.length > 0
     }
   ];
 
@@ -171,13 +245,21 @@ export const resolvers = {
 
       return results.length > 0 ? results : placeholderMatches;
     },
+    liveGameEvents: async (_, __, { currentUser }) => {
+      if (!currentUser) {
+        return gameActionEvents;
+      }
+
+      return getUserEvents(currentUser.id);
+    },
     dashboard: async (_, __, { currentUser }) => {
       if (!currentUser) {
         return {
           profile: null,
           achievements: placeholderAchievements,
           recentMatches: placeholderMatches,
-          activeChallenges: placeholderChallenges
+          activeChallenges: placeholderChallenges,
+          liveEvents: gameActionEvents
         };
       }
 
@@ -199,7 +281,8 @@ export const resolvers = {
         profile,
         achievements: achievements.length > 0 ? achievements : placeholderAchievements,
         recentMatches: recentMatches.length > 0 ? recentMatches : placeholderMatches,
-        activeChallenges: challenges.length > 0 ? challenges : placeholderChallenges
+        activeChallenges: challenges.length > 0 ? challenges : placeholderChallenges,
+        liveEvents: getUserEvents(currentUser.id)
       };
     }
   },
@@ -279,6 +362,10 @@ export const resolvers = {
     saveGameProgress: async (_, { input }, { currentUser }) => {
       requireAuth(currentUser);
 
+      const creditBonus = input.missionProgress >= 100 ? 35 : 10;
+      const nextCosmetics =
+        input.missionProgress >= 100 ? ["neon-whale-trail"] : [];
+
       const profile = await GameProfile.findOneAndUpdate(
         { user: currentUser.id },
         {
@@ -291,6 +378,12 @@ export const resolvers = {
             missionStatus: input.missionStatus,
             reputation: input.missionProgress,
             currentStage: input.missionProgress >= 100 ? "Completed" : "Dock-01"
+          },
+          $inc: {
+            credits: creditBonus
+          },
+          $addToSet: {
+            unlockedCosmetics: { $each: nextCosmetics }
           }
         },
         {
@@ -303,14 +396,14 @@ export const resolvers = {
       const achievements = await syncAchievementsForProfile(profile);
 
       const recentMatchResult = await MatchResult.create({
-        user: currentUser.id,
-        opponentName: "Mock Docker System",
-        opponentType: "system",
-        result: input.result || "progress",
-        scoreEarned: input.scoreEarned || 0,
-        xpEarned: input.xpEarned || 0,
-        notes: input.notes || "Phase 3 placeholder progress save."
-      });
+          user: currentUser.id,
+          opponentName: "Mock Docker System",
+          opponentType: input.challengeId ? "ai" : "system",
+          result: input.result || "progress",
+          scoreEarned: input.scoreEarned || 0,
+          xpEarned: input.xpEarned || 0,
+          notes: input.notes || "Game progress saved through GraphQL."
+        });
 
       const leaderboardEntry = await LeaderboardEntry.findOneAndUpdate(
         { user: currentUser.id, season: "Season 1", mode: "solo" },
@@ -329,16 +422,15 @@ export const resolvers = {
         }
       ).populate("user");
 
-      const rankedEntries = await LeaderboardEntry.find({ season: "Season 1", mode: "solo" })
-        .sort({ score: -1, achievedAt: 1 });
+      await rankLeaderboard();
 
-      for (let index = 0; index < rankedEntries.length; index += 1) {
-        const entry = rankedEntries[index];
-        if (entry.rank !== index + 1) {
-          entry.rank = index + 1;
-          await entry.save();
-        }
-      }
+      pushGameActionEvent({
+        user: currentUser,
+        type: "progress-saved",
+        message: `${currentUser.username} saved a run for ${input.score} points and earned ${creditBonus} credits.`,
+        score: input.score,
+        health: input.containerHealth
+      });
 
       const refreshedProfile = await GameProfile.findById(profile._id).populate("user");
       const refreshedLeaderboardEntry = await LeaderboardEntry.findById(leaderboardEntry._id).populate(
@@ -350,8 +442,172 @@ export const resolvers = {
         profile: refreshedProfile,
         achievements,
         recentMatchResult: refreshedRecentMatch,
-        leaderboardEntry: refreshedLeaderboardEntry
+        leaderboardEntry: refreshedLeaderboardEntry,
+        liveEvents: getUserEvents(currentUser.id)
       };
+    },
+    completeChallenge: async (_, { input }, { currentUser }) => {
+      requireAuth(currentUser);
+
+      const challenge = await Challenge.findById(input.challengeId);
+
+      if (!challenge || !challenge.isActive) {
+        throw new GraphQLError("Challenge is not available.", {
+          extensions: { code: "BAD_USER_INPUT" }
+        });
+      }
+
+      const challengeResult = buildChallengeResult(input, challenge);
+      const earnedXp = challengeResult.success ? challenge.rewardXp : Math.round(challenge.rewardXp / 3);
+      const earnedCredits = challengeResult.success
+        ? challenge.rewardCredits
+        : Math.round(challenge.rewardCredits / 4);
+      const cosmeticReward = challengeResult.success ? [`${challenge.type}-operator-skin`] : [];
+
+      const profile = await GameProfile.findOneAndUpdate(
+        { user: currentUser.id },
+        {
+          $set: {
+            totalScore: Math.max(input.score, challengeResult.playerScore),
+            xp: input.xp + earnedXp,
+            level: Math.max(input.level, Math.floor((input.xp + earnedXp) / 180) + 1),
+            containerHealth: input.containerHealth,
+            missionProgress: input.missionProgress,
+            missionStatus: challengeResult.success ? "Challenge Complete" : "Challenge Failed",
+            reputation: input.missionProgress,
+            currentStage: challengeResult.success ? "Challenge Cleared" : "Dock-01"
+          },
+          $inc: {
+            credits: earnedCredits
+          },
+          $addToSet: {
+            unlockedCosmetics: { $each: cosmeticReward }
+          }
+        },
+        {
+          new: true,
+          upsert: true,
+          setDefaultsOnInsert: true
+        }
+      ).populate("user");
+
+      const updatedChallenge = await Challenge.findByIdAndUpdate(
+        challenge._id,
+        {
+          $set: {
+            assignedTo: currentUser.id,
+            status: challengeResult.success ? "completed" : "attempted"
+          }
+        },
+        {
+          new: true
+        }
+      ).populate("assignedTo");
+
+      const recentMatchResult = await MatchResult.create({
+        user: currentUser.id,
+        opponentName: "Adaptive Sentinel AI",
+        opponentType: "ai",
+        result: challengeResult.result,
+        scoreEarned: challengeResult.playerScore,
+        xpEarned: earnedXp,
+        notes: `AI scored ${challengeResult.aiScore}. Player scored ${challengeResult.playerScore}.`
+      });
+
+      const leaderboardEntry = await LeaderboardEntry.findOneAndUpdate(
+        { user: currentUser.id, season: "Season 1", mode: "solo" },
+        {
+          $set: {
+            score: Math.max(input.score, challengeResult.playerScore),
+            season: "Season 1",
+            mode: "solo",
+            achievedAt: new Date()
+          }
+        },
+        {
+          new: true,
+          upsert: true,
+          setDefaultsOnInsert: true
+        }
+      ).populate("user");
+
+      await rankLeaderboard();
+      const achievements = await syncAchievementsForProfile(profile);
+
+      pushGameActionEvent({
+        user: currentUser,
+        type: "challenge-complete",
+        message: `${currentUser.username} ${challengeResult.success ? "beat" : "challenged"} the Adaptive Sentinel AI in ${challenge.title}.`,
+        score: challengeResult.playerScore,
+        health: input.containerHealth
+      });
+
+      const refreshedLeaderboardEntry = await LeaderboardEntry.findById(leaderboardEntry._id).populate(
+        "user"
+      );
+      const refreshedRecentMatch = await MatchResult.findById(recentMatchResult._id).populate("user");
+
+      return {
+        profile,
+        challenge: updatedChallenge,
+        achievements,
+        recentMatchResult: refreshedRecentMatch,
+        leaderboardEntry: refreshedLeaderboardEntry,
+        liveEvents: getUserEvents(currentUser.id)
+      };
+    },
+    resetMyGameProgress: async (_, __, { currentUser }) => {
+      requireAuth(currentUser);
+
+      const profile = await GameProfile.findOneAndUpdate(
+        { user: currentUser.id },
+        {
+          $set: {
+            level: 1,
+            xp: 0,
+            totalScore: 0,
+            reputation: 0,
+            credits: 0,
+            currentStage: "Dock-01",
+            containerHealth: 100,
+            missionProgress: 0,
+            missionStatus: "Standby",
+            unlockedCosmetics: [],
+            achievements: []
+          }
+        },
+        {
+          new: true,
+          upsert: true,
+          setDefaultsOnInsert: true
+        }
+      ).populate("user");
+
+      await Achievement.deleteMany({ user: currentUser.id });
+
+      pushGameActionEvent({
+        user: currentUser,
+        type: "progress-reset",
+        message: `${currentUser.username} reset their game profile.`,
+        score: 0,
+        health: 100
+      });
+
+      return profile;
+    },
+    clearMyMatchHistory: async (_, __, { currentUser }) => {
+      requireAuth(currentUser);
+      await MatchResult.deleteMany({ user: currentUser.id });
+
+      pushGameActionEvent({
+        user: currentUser,
+        type: "history-cleared",
+        message: `${currentUser.username} cleared match history.`,
+        score: 0,
+        health: 100
+      });
+
+      return true;
     }
   },
   User: {
@@ -446,5 +702,20 @@ export const resolvers = {
       return User.findById(parent.user);
     },
     completedAt: (parent) => new Date(parent.completedAt).toISOString()
+  },
+  GameActionEvent: {
+    id: (parent) => String(parent.id),
+    user: async (parent) => {
+      if (!parent.user) {
+        return null;
+      }
+
+      if (parent.user?.email) {
+        return parent.user;
+      }
+
+      return User.findById(parent.user);
+    },
+    createdAt: (parent) => new Date(parent.createdAt).toISOString()
   }
 };

@@ -24,6 +24,16 @@ export const typeDefs = `#graphql
     achievements: [Achievement!]!
   }
 
+  type GameActionEvent {
+    id: ID!
+    user: User
+    type: String!
+    message: String!
+    score: Int!
+    health: Int!
+    createdAt: String!
+  }
+
   type Achievement {
     id: ID!
     user: User
@@ -84,6 +94,7 @@ export const typeDefs = `#graphql
     achievements: [Achievement!]!
     recentMatches: [MatchResult!]!
     activeChallenges: [Challenge!]!
+    liveEvents: [GameActionEvent!]!
   }
 
   input RegisterInput {
@@ -121,6 +132,17 @@ export const typeDefs = `#graphql
     scoreEarned: Int
     xpEarned: Int
     notes: String
+    challengeId: ID
+  }
+
+  input CompleteChallengeInput {
+    challengeId: ID!
+    score: Int!
+    xp: Int!
+    level: Int!
+    containerHealth: Int!
+    missionProgress: Int!
+    commandCount: Int!
   }
 
   type SaveGameProgressPayload {
@@ -128,6 +150,16 @@ export const typeDefs = `#graphql
     achievements: [Achievement!]!
     recentMatchResult: MatchResult
     leaderboardEntry: LeaderboardEntry
+    liveEvents: [GameActionEvent!]!
+  }
+
+  type CompleteChallengePayload {
+    profile: GameProfile!
+    challenge: Challenge!
+    achievements: [Achievement!]!
+    recentMatchResult: MatchResult!
+    leaderboardEntry: LeaderboardEntry!
+    liveEvents: [GameActionEvent!]!
   }
 
   type Query {
@@ -142,6 +174,7 @@ export const typeDefs = `#graphql
     getLeaderboard: [LeaderboardEntry!]!
     challenges: [Challenge!]!
     recentMatches: [MatchResult!]!
+    liveGameEvents: [GameActionEvent!]!
     dashboard: DashboardData!
   }
 
@@ -156,7 +189,8 @@ export const typeDefs = `#graphql
     login(input: LoginInput!): AuthPayload!
     updateMyGameProfile(input: UpdateGameProfileInput!): GameProfile!
     saveGameProgress(input: SaveGameProgressInput!): SaveGameProgressPayload!
+    completeChallenge(input: CompleteChallengeInput!): CompleteChallengePayload!
+    resetMyGameProgress: GameProfile!
+    clearMyMatchHistory: Boolean!
   }
-
-  # TODO: Add gameplay mutations and subscriptions in Phase 2 and Phase 3.
 `;

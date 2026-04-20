@@ -52,6 +52,14 @@ const demoChallenges = [
     rewardXp: 150,
     rewardCredits: 80,
     status: "available"
+  },
+  {
+    title: "Adaptive Sentinel Duel",
+    description: "Outscore the AI while keeping container health above zero.",
+    type: "ai",
+    rewardXp: 220,
+    rewardCredits: 120,
+    status: "available"
   }
 ];
 
