@@ -27,9 +27,6 @@ const apolloServer = new ApolloServer({
   resolvers
 });
 
-await connectToDatabase();
-await ensureDevDemoUser();
-await ensureDevPresentationData();
 await apolloServer.start();
 
 app.use(
@@ -58,3 +55,15 @@ app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
   console.log(`GraphQL ready at http://localhost:${port}/graphql`);
 });
+
+async function initializeDatabase() {
+  try {
+    await connectToDatabase();
+    await ensureDevDemoUser();
+    await ensureDevPresentationData();
+  } catch (error) {
+    console.error("Database initialization failed.", error);
+  }
+}
+
+initializeDatabase();

@@ -1,11 +1,13 @@
 import { Router } from "express";
+import { getDatabaseStatus } from "../config/db.js";
 
 const router = Router();
 
 router.get("/", (_req, res) => {
   res.json({
     status: "ok",
-    service: "docker-game-server"
+    service: "docker-game-server",
+    database: getDatabaseStatus()
   });
 });
 
